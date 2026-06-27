@@ -1,0 +1,183 @@
+\documentclass[11pt, a4paper]{article}
+
+% ── Paquetes ──────────────────────────────────────────────────────────────────
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish]{babel}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{amsmath, amssymb}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{parskip}
+\usepackage{fancyhdr}
+\usepackage{cite}
+\usepackage{float}
+
+% ── Estilo de página ──────────────────────────────────────────────────────────
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{CS3014 – Estructura de Datos Avanzados}
+\lhead{Proyecto Final 2026-1}
+\rfoot{\thepage}
+
+% ── Título ────────────────────────────────────────────────────────────────────
+\title{
+    \vspace{-1cm}
+    {\large CS3014 – Estructura de Datos Avanzados} \\[0.5em]
+    {\Large \textbf{Motor de Búsqueda Espacial:}} \\[0.3em]
+    {\Large KD-Tree vs Quadtree en Python y C++} \\[0.5em]
+    {\normalsize Proyecto Final 2026-1}
+}
+
+\author{
+    [Nombre 1] \and
+    [Nombre 2] \and
+    [Nombre 3]
+}
+
+\date{Junio 2026}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\begin{document}
+
+\maketitle
+\thispagestyle{fancy}
+
+% ── Abstract ──────────────────────────────────────────────────────────────────
+\begin{abstract}
+Este proyecto detalla la creación de un motor de búsqueda espacial, similar a una 
+versión básica de Google Maps. El objetivo es buscar Puntos de Interés (POI) de 
+forma eficiente utilizando datos reales extraídos de OpenStreetMap. Para lograrlo, 
+implementamos y comparamos dos estructuras espaciales, el \textit{KD-Tree} y \textit{Quadtree}, tanto 
+en Python como en C++. Finalmente, evaluamos qué tan bien rinden al construir el árbol y al 
+resolver consultas KNN y por rango.
+\end{abstract}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Introducción}
+% ══════════════════════════════════════════════════════════════════════════════
+
+Buscar lugares cercanos a una ubicación es una tarea muy común hoy en día, presente en todo tipo de aplicaciones, desde mapas hasta recomendaciones de restaurantes o farmacias. Sin embargo, procesar estas consultas rápidamente cuando tenemos millones de puntos nos obliga a usar estructuras de datos diseñadas específicamente para trabajar en dos dimensiones.
+
+Si hiciéramos una búsqueda lineal sobre $n$ puntos, el costo sería $O(n)$ por consulta,
+algo inviable cuando manejamos volúmenes de datos masivos. Aquí es donde entran estructuras como el KD-Tree y el Quadtree: al organizar los puntos de manera jerárquica, nos permiten ignorar regiones enteras del mapa durante la búsqueda, bajando el tiempo promedio a $O(\log n)$.
+
+A lo largo de este trabajo, construimos un motor que indexa conjuntos de POIs reales de OpenStreetMap para responder consultas KNN y por rango de forma óptima. Además, contrastamos cómo se comportan estas dos estructuras al ser programadas en Python frente a C++.
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Marco Teórico}
+\label{sec:marco}
+% ══════════════════════════════════════════════════════════════════════════════
+
+\subsection{Distancia de Haversine}
+
+Como las coordenadas geográficas no están en un plano euclidiano perfecto, no podemos usar la distancia tradicional. Para medir la separación real entre dos puntos $(\text{lat}_1, \text{lon}_1)$ y
+$(\text{lat}_2, \text{lon}_2)$ sobre la esfera terrestre, utilizamos la fórmula de Haversine \cite{sinnott1984virtues}:
+
+\[
+    a = \sin^2\!\left(\frac{\Delta\phi}{2}\right)
+      + \cos\phi_1 \cdot \cos\phi_2 \cdot \sin^2\!\left(\frac{\Delta\lambda}{2}\right)
+\]
+\[
+    d = 2R \cdot \arctan2\!\left(\sqrt{a},\, \sqrt{1-a}\right)
+\]
+
+donde $\phi$ es la latitud en radianes, $\lambda$ la longitud en radianes
+y $R = 6{,}371$ km el radio medio de la Tierra.
+
+\subsection{KD-Tree}
+
+\subsubsection{Definición}
+
+Propuesto por Bentley en 1975 \cite{bentley1975multidimensional} el KD-Tree (\textit{k-dimensional tree})
+nace como una adaptación del clásico árbol de búsqueda binaria para trabajar en múltiples dimensiones. Si nos enfocamos en su versión 2D, la idea es que cada nodo parta el plano en dos usando una línea paralela a uno de los ejes. Este corte va alternando entre latitud y longitud a medida que bajamos de nivel.
+
+Dentro de la estructura, cada nodo guarda un punto $p \in P$, Los puntos que caen en el subárbol izquierdo tienen un valor menor o igual en el eje que estamos dividiendo, y los que van al derecho son estrictamente mayores.
+
+\subsubsection{Construcción}
+
+Para asegurar que el árbol quede balanceado y su altura se mantenga en $O(\log n)$, lo habitual es tomar la \textit{mediana} de los puntos en el eje correspondiente y usarla como la raíz de ese subárbol:
+
+\begin{enumerate}
+    \item Seleccionar la mediana de los puntos por el eje actual.
+    \item Insertar la mediana como raíz del subárbol.
+    \item Recursar sobre los puntos a izquierda y derecha de la mediana.
+\end{enumerate}
+
+Si apoyamos este proceso con \texttt{nth_element} para encontrar la mediana en tiempo amortizado $O(n)$, terminamos construyendo todo el árbol en $O(n \log n)$.
+
+\subsection{Quadtree}
+
+\subsubsection{Definición}
+
+El Quadtree \cite{samet1984quadtree} es otra estructura en forma de árbol, pero aquí cada nodo interno se divide siempre en cuatro hijos. Estos representan los cuadrantes geográficos de la zona: noroeste (NW), noreste (NE), suroeste (SW) y sureste (SE).
+
+Su principal diferencia con el KD-Tree es que el Quadtree parte el espacio en cuatro secciones exactamente iguales. Hace esto de forma recursiva sin importarle si en esa zona hay muchos o pocos puntos agrupados.
+
+\subsubsection{Construcción}
+
+Para armarlo, empezamos con un cuadro grande que envuelve a todos los puntos. Luego, vamos cortando cada nodo en cuatro cuadrantes más pequeños hasta que cada subdivisión tenga, como máximo, un solo punto o alcance el límite de capacidad que le hayamos puesto a las hojas.
+
+Si los puntos están distribuidos de forma más o menos uniforme, construirlo toma $O(n \log n)$. El problema surge cuando hay clústers muy densos: la estructura puede necesitar demasiados niveles para lograr separar puntos que están muy juntos, haciendo que el tiempo caiga hasta $O(n^2)$.
+
+\subsection{Comparación entre KD-Tree y Quadtree}
+
+\begin{table}[H]
+\centering
+\caption{Comparación teórica: KD-Tree vs Quadtree (2D)}
+\label{tab:comparacion}
+\begin{tabular}{@{}lcc@{}}
+\toprule
+\textbf{Característica}       & \textbf{KD-Tree}          & \textbf{Quadtree}         \\
+\midrule
+Construcción                  & $O(n \log n)$             & $O(n \log n)$*            \\
+Espacio                       & $O(n)$                    & $O(n)$*                   \\
+KNN (caso promedio 2D)        & $O(\log n)$               & $O(\log n)$               \\
+Range query (caso promedio)   & $O(\sqrt{n} + k)$         & $O(\sqrt{n} + k)$         \\
+Sensibilidad a distribución   & Baja (mediana adaptativa) & Alta (división uniforme)  \\
+Implementación                & Moderada                  & Simple                    \\
+\bottomrule
+\end{tabular}
+\\[0.5em]
+\small{* En el peor caso con puntos muy agrupados: $O(n^2)$.}
+\end{table}
+
+\subsection{Python vs C++}
+
+El lenguaje que escojamos afecta bastante el desempeño final. Python, al ser interpretado y usar tipado dinámico, arrastra cierto overhead que se nota mucho en operaciones intensivas, como las miles de comparaciones numéricas que hacemos al buscar en el árbol. C++, por su parte, se compila a código nativo y viene con optimizaciones que eliminan ese peso extra. Las diferencias más grandes vienen por cómo cada uno maneja la memoria (C++ nos deja hacer estructuras más amigables con la caché), el costo de hacer tantas llamadas recursivas, y cómo procesan las matemáticas básicas (usar tipos primitivos directos frente a los objetos de Python).
+
+% ── Referencias ───────────────────────────────────────────────────────────────
+\newpage
+\bibliographystyle{plain}
+\begin{thebibliography}{9}
+
+\bibitem{bentley1975multidimensional}
+Bentley, J.L. (1975).
+\textit{Multidimensional binary search trees used for associative searching.}
+Communications of the ACM, 18(9), 509--517.
+
+\bibitem{bergetal2008computational}
+de Berg, M., Cheong, O., van Kreveld, M., \& Overmars, M. (2008).
+\textit{Computational Geometry: Algorithms and Applications} (3rd ed.).
+Springer.
+
+\bibitem{samet1984quadtree}
+Samet, H. (1984).
+\textit{The quadtree and related hierarchical data structures.}
+ACM Computing Surveys, 16(2), 187--260.
+
+\bibitem{sinnott1984virtues}
+Sinnott, R.W. (1984).
+\textit{Virtues of the Haversine.}
+Sky and Telescope, 68(2), 159.
+
+\bibitem{samet2006foundations}
+Samet, H. (2006).
+\textit{Foundations of Multidimensional and Metric Data Structures.}
+Morgan Kaufmann.
+
+\end{thebibliography}
+
+\end{document}
