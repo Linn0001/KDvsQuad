@@ -96,7 +96,7 @@ id,name,lat,lon,category
 
 ---
 
-## 🚀 Cómo Ejecutar
+## Cómo Ejecutar
 
 ### Python — Benchmark KD-Tree
 
